@@ -1,0 +1,44 @@
+<!doctype html>
+<title>test</title>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/jquery.min.js"></script>
+<script src="/client.js"></script>
+<style>
+  html {
+    border: 0;
+    padding: 0;
+    margin: 0;
+  }
+  label {
+    display: block;
+    font-size: 1ex;
+    padding-left: 1ex;
+  }
+  input {
+    border: 1px solid black;
+    display: block;
+  }
+  #log {
+    border: 1px solid black;
+    overflow-y: scroll;
+    position: absolute;
+    top: 0;
+    bottom: 2.2em;
+    right: 0;
+    left: 0;
+
+  }
+  #form {
+    position: absolute;
+    bottom: 0;
+    height: 2.2em;
+  }
+</style>
+<div id="container">
+  <div id="log"></div>
+  <form id="form" name="message" action="" method="post"
+        onsubmit="try{sendLogin()}catch(e){console.error(e)};return false">
+    <input name="msg" type="text" id="message" autofocus="true">
+    <label id="prompt" for="message">Enter a name to chat.</label>
+  </form>
+</div>
