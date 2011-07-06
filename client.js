@@ -9,6 +9,10 @@ function log(x) {
   log.scrollTop(log[0].scrollHeight);
 };
 
+function log_err (message) {
+  log('<span style="color:red">Error: ' + message + '</span>');
+};
+
 function log_stupid (message) {
   log('<span style="color:red">stupid ' + message + '</span>');
 };
@@ -19,149 +23,81 @@ function log_info (message) {
 
 
 
-window.onload = function () {
-  window.io = io.connect();
-  window.poll = 123;
 
-  $('#message').bind('keydown', make_onReturn(sendLogin));
+$(function () {
+  var socket = io.connect();
+  var mynick;
 
-  io.on('stupid', log_stupid);
-
-  io.on('password required', function (nick) {
-
-    // clear input fields
-    if ($('#password').length > 0) {
-      $('#password').remove();
-      $('#password-label').remove();
-
-      //$('#message').val('').focus();
-      //$('#message').unbind();
-      //$('#message').bind('keydown', make_onReturn(sendMessage));
+  $('#message').bind('keydown', function (event) {
+    if (event.keyCode === 13) {
+      var nick = $('#message').val();
+      socket.emit('nick/1', nick);
     };
-
-
-    var form = $('#form');
-    form.append('<input name="password" type="password" id="password" autofocus="true">');
-    form.append('<label id="password-label" for="password">Enter password to login!</label>');
-
-    $('#password').bind('keydown', make_onReturn(sendLogin));
   });
 
-  io.on('say', function (nick, message) {
-    log(nick + ': ' + message);
-  });
-  io.on('you say', function (nick, message) {
-    log('<span style="color:green">' + nick + '</span>: ' + message);
-  });
-
-  io.on('nick', function (oldnick, newnick) {
-    log_info(oldnick + ' is now known as ' + newnick);
-  });
-  io.on('you nick', function (nick) {
-    log_info('You are now known as ' + nick);
-    $('#prompt').html('You are known as <span style="color:green">' + nick + '</span>.');
-  });
-
-  io.on('join', function (newnick) {
-    log_info(newnick + ' has joined');
-  });
-
-  io.on('part', function (oldnick) {
-    log_info(oldnick + ' has left');
-  });
-
-  io.on('names', function (names) {
-    log_info('Users: ' + names.join(', '));
-  });
-
-  io.on('you join', function (nick) {
+  socket.on('onymous', function (nick) {
+    mynick = nick;
 
     $('#message').val('').focus();
-    $('#password').remove();
-    $('#password-label').remove();
+    //$('#password').remove();
+    // $('#password-label').remove();
+
+    $('#prompt').html('You are known as <span id="nickname" style="color:green">' + nick + '</span>.');
 
     $('#message').unbind();
-    $('#message').bind('keydown', make_onReturn(sendMessage));
-
-    log_info('You have joined as ' + nick);
-    $('#prompt').html('You are known as <span style="color:green">' + nick + '</span>.');
-  });
-
-  io.on('poll update', function (poll_update) {
-    var polls = $('#polls');
-    var poll = polls.find('#poll_' + poll_update.id);
-    if (poll.length === 0) {
-      polls.append(
-        '<div id="poll_' + poll_update.id + '">'
-        + '<span class="topic"></span>'
-        + '<span class="results"></span>'
-        + '</div>');
-      poll = polls.find('#poll_' + poll_update.id);
-      var innerHTML = [];
-      Object.keys(poll_update.results).forEach(function (alt) {
-        innerHTML.push(
-          '<button onclick="try{sendVote(\''+alt+'\')}catch(e){console.error(e)}">'+alt+'</button>: '
-          + '<span class="vote_' + alt +'"></span>'
-          + '</span>'
-        );
-      });
-      poll.find('.results').append(innerHTML.join(', '));
-    };
-    poll.find('.topic').html(poll_update.topic);
-    Object.keys(poll_update.results).forEach(function (alt) {
-      poll.find('.vote_'+alt).html(poll_update.results[alt]);
-    });
-  });
-};
-
-
-function make_onReturn(callback) {
-  return function (event) {
-    try {
+    $('#message').bind('keydown', function (event) {
       if (event.keyCode === 13) {
-        var args = Array.prototype.slice.call(arguments, 1);
-        callback.apply(this, args);
+        var message = $('#message');
+        var content = message.val();
+        message.val(''); // reset input field
+
+        // parse commands
+        var match = /^\/([^ ]+)(?: +(.*))?$/.exec(content);
+
+        if (match) switch (match[1]) {
+          case 'nick':
+            socket.emit('nick/1', match[2]);
+            break;
+          case 'auth':
+            socket.emit('nick/2', nick, match[2]);
+            break;
+          default:
+            message.val(content);
+            $('#message').select();
+            log_err('unknown command: ' + match[1]);
+            break;
+        } else {
+          socket.emit('chat/1', content);
+        };
       };
-    } catch(e) {
-      console.error(e)
+    });
+
+    log_info('you have joined as ' + nick);
+  });
+
+  socket.on('info', log_info);
+
+  socket.on('say', function (nick, text) {
+    if (nick === mynick) {
+      log('<span style="color:green">' + nick + '</span>: ' + text);
+    } else if (typeof mynick === 'string' && text.indexOf(mynick) >= 0) {
+      log('<span style="color:orange">' + nick + '</span>: ' + text);
+    } else {
+      log(nick + ': ' + text);
     };
-  };
-};
+  });
 
-function sendLogin() {
-  var username_element = $('#message');
-  var password_element = $('#password');
-
-  var username = username_element.val();
-  if (password_element.length > 0) {
-    var password = password_element.val();
-  };
-
-  io.emit('join', username, password);
-};
-
-function sendMessage() {
-  var message = $('#message');
-  var content = message.val();
-  message.val(''); // reset input field
-  var match = /^\/([^ ]+)(?: +(.*))?$/.exec(content);
-
-  if (match) {
-    if (match[1] === 'query') {
-      var match = /^\/(?:[^ ]+)(?: +([^ ]+))(?: +(.*))$/.exec(content);
-      var to = match[1];
-      var text = match[2];
-      io.emit('query', to, text);
-      return;
+  socket.on('reject', function (what, reason) {
+    //console.error('rejected', what.toString() + ':', reason);
+    switch (what) {
+      case 'nick/1':
+        $('#message').select();
+        break;
+      case 'nick/2':
+        $('#message').val('/auth ');
+        $('#message').focus();
+        break;
     };
-
-    io.emit(match[1], match[2]);
-  } else {
-    io.emit('say', content);
-  };
-};
-
-function sendVote(decision) {
-  io.emit('vote', poll, decision);
-};
-
+    log_err(reason);
+  });
+});

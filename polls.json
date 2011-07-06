@@ -1,0 +1,10 @@
+{
+  "123": {
+    "id": 123,
+    "topic": "Are you sure?",
+    "results": {
+      "yes": 0,
+      "no": 0
+    }
+  }
+}
