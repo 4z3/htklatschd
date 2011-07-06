@@ -20,9 +20,32 @@ function log_info (message) {
 
 
 window.onload = function () {
-  window.io = io.connect('http://localhost:8529');
+  window.io = io.connect();
+  window.poll = 123;
+
+  $('#message').bind('keydown', make_onReturn(sendLogin));
 
   io.on('stupid', log_stupid);
+
+  io.on('password required', function (nick) {
+
+    // clear input fields
+    if ($('#password').length > 0) {
+      $('#password').remove();
+      $('#password-label').remove();
+
+      //$('#message').val('').focus();
+      //$('#message').unbind();
+      //$('#message').bind('keydown', make_onReturn(sendMessage));
+    };
+
+
+    var form = $('#form');
+    form.append('<input name="password" type="password" id="password" autofocus="true">');
+    form.append('<label id="password-label" for="password">Enter password to login!</label>');
+
+    $('#password').bind('keydown', make_onReturn(sendLogin));
+  });
 
   io.on('say', function (nick, message) {
     log(nick + ': ' + message);
@@ -30,7 +53,6 @@ window.onload = function () {
   io.on('you say', function (nick, message) {
     log('<span style="color:green">' + nick + '</span>: ' + message);
   });
-
 
   io.on('nick', function (oldnick, newnick) {
     log_info(oldnick + ' is now known as ' + newnick);
@@ -53,20 +75,69 @@ window.onload = function () {
   });
 
   io.on('you join', function (nick) {
-    // replace the input method
-    $('#form').attr('onsubmit',
-      $('#form').attr('onsubmit').replace('sendLogin','sendMessage')
-    );
+
+    $('#message').val('').focus();
+    $('#password').remove();
+    $('#password-label').remove();
+
+    $('#message').unbind();
+    $('#message').bind('keydown', make_onReturn(sendMessage));
+
     log_info('You have joined as ' + nick);
     $('#prompt').html('You are known as <span style="color:green">' + nick + '</span>.');
+  });
+
+  io.on('poll update', function (poll_update) {
+    var polls = $('#polls');
+    var poll = polls.find('#poll_' + poll_update.id);
+    if (poll.length === 0) {
+      polls.append(
+        '<div id="poll_' + poll_update.id + '">'
+        + '<span class="topic"></span>'
+        + '<span class="results"></span>'
+        + '</div>');
+      poll = polls.find('#poll_' + poll_update.id);
+      var innerHTML = [];
+      Object.keys(poll_update.results).forEach(function (alt) {
+        innerHTML.push(
+          '<button onclick="try{sendVote(\''+alt+'\')}catch(e){console.error(e)}">'+alt+'</button>: '
+          + '<span class="vote_' + alt +'"></span>'
+          + '</span>'
+        );
+      });
+      poll.find('.results').append(innerHTML.join(', '));
+    };
+    poll.find('.topic').html(poll_update.topic);
+    Object.keys(poll_update.results).forEach(function (alt) {
+      poll.find('.vote_'+alt).html(poll_update.results[alt]);
+    });
   });
 };
 
 
+function make_onReturn(callback) {
+  return function (event) {
+    try {
+      if (event.keyCode === 13) {
+        var args = Array.prototype.slice.call(arguments, 1);
+        callback.apply(this, args);
+      };
+    } catch(e) {
+      console.error(e)
+    };
+  };
+};
+
 function sendLogin() {
-  var message = $('#message');
-  io.emit('join', message.val());
-  message.val('');
+  var username_element = $('#message');
+  var password_element = $('#password');
+
+  var username = username_element.val();
+  if (password_element.length > 0) {
+    var password = password_element.val();
+  };
+
+  io.emit('join', username, password);
 };
 
 function sendMessage() {
@@ -88,5 +159,9 @@ function sendMessage() {
   } else {
     io.emit('say', content);
   };
+};
+
+function sendVote(decision) {
+  io.emit('vote', poll, decision);
 };
 

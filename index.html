@@ -21,24 +21,27 @@
   #log {
     border: 1px solid black;
     overflow-y: scroll;
-    position: absolute;
+    height: 5em;
+    width: 20em;
+    /*position: absolute;*/
     top: 0;
-    bottom: 2.2em;
+    bottom: 3em;
     right: 0;
-    left: 0;
-
+    /*left: 0;*/
+    width: 100%;
   }
   #form {
-    position: absolute;
+    /*position: absolute;*/
     bottom: 0;
-    height: 2.2em;
+    /*height: 3em;*/
   }
 </style>
-<div id="container">
+<div>
   <div id="log"></div>
-  <form id="form" name="message" action="" method="post"
-        onsubmit="try{sendLogin()}catch(e){console.error(e)};return false">
-    <input name="msg" type="text" id="message" autofocus="true">
+  <div id="form">
+    <input type="text" id="message" autofocus="true">
     <label id="prompt" for="message">Enter a name to chat.</label>
-  </form>
+  </div>
+</div>
+<div id="polls">
 </div>
