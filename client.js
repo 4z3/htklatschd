@@ -183,6 +183,7 @@ $(function () {
   socket.on('update poll', function (poll_update) {
     var polls = $('#polls');
     var poll = polls.find('#poll_' + poll_update.id);
+    var chart_element_id = 'poll_chart_' + poll_update.id;
     if (poll.length === 0) {
       polls.append(
         '<div id="poll_' + poll_update.id + '">'
@@ -191,6 +192,10 @@ $(function () {
         + '</div>');
       poll = polls.find('#poll_' + poll_update.id);
       var innerHTML = [];
+
+      poll.find('.results').append(
+        '<span class="pie" id="' + chart_element_id + '"></span>');
+
       Object.keys(poll_update.results).forEach(function (alt) {
         var className = 'vote_' + alt;
 
@@ -216,6 +221,67 @@ $(function () {
         alt + ': ' + poll_update.results[alt]
       );
     });
+
+    //
+    var data = Object.keys(poll_update.results).map(function (name) {
+      return poll_update.results[name];
+    }).toString();
+    var element = $('#'+chart_element_id);
+    element.html(data);
+    element.peity('yes/no-pie');
   });
 });
+
+$.fn.peity.add(
+  'yes/no-pie',
+  {
+    colors: {
+      yes: 'green',
+      no: 'red'
+    },
+    delimeter: ',',
+    radius: 32
+  },
+  function(opts) {
+    var $this = $(this)
+    var center = opts.radius / 2;
+    var values = $this.text().split(opts.delimeter)
+    var Y = Number(values[0]);
+    var N = Number(values[1]);
+    var offset = Math.PI / 2;
 
+    var canvas = document.createElement('canvas')
+    canvas.setAttribute("width", opts.radius);
+    canvas.setAttribute("height", opts.radius);
+    var context = canvas.getContext("2d");
+
+    var sum = Y + N;
+
+    // normalize
+    if (sum === 0) {
+      Y = N = 0.5;
+    } else {
+      Y /= sum;
+      N /= sum;
+    };
+
+    Y *= 2 * Math.PI;
+    N *= 2 * Math.PI;
+
+    // yes
+    context.beginPath();
+    context.moveTo(center, center);
+    context.arc(center, center, center, offset, offset + Y, false);
+    context.fillStyle = opts.colors.yes;
+    context.fill();
+
+    // no
+    context.beginPath();
+    context.moveTo(center, center);
+    context.arc(center, center, center, offset + Y, offset + Y + N, false);
+    context.fillStyle = opts.colors.no;
+    context.fill();
+
+    $this.wrapInner($("<span>").hide()).append(canvas)
+  }
+);

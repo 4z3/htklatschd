@@ -1,0 +1,3 @@
+[submodule "jquery_plugins/peity"]
+	path = jquery_plugins/peity
+	url = https://github.com/benpickles/peity.git

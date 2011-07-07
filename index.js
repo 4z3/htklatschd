@@ -90,6 +90,9 @@ router.get('/', make_file_server('index.html', 'text/html'));
 ].forEach(function (name) {
   router.get('/' + name, make_file_server(name, 'application/javascript'));
 });
+
+router.get('/jquery.peity.min.js', make_file_server(
+  'jquery_plugins/peity/jquery.peity.min.js', 'application/javascript'));
 
 
 
