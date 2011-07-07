@@ -54,6 +54,7 @@ function nick_is_acceptable(nick) {
 
 var commands = {};
 var services = {};
+var actions = {};
 
 
 var initial_state = 'anonymous';
@@ -65,6 +66,7 @@ var states = {
     transitions: {}
   },
   'anonymous': {
+    onenter: 'reset-nick',
     services: [ 'push-chat', 'push-poll' ],
     commands: [ 'nick/1', 'nick/2', 'disconnect' ],
     transitions: {
@@ -82,6 +84,7 @@ var states = {
     }
   },
   'authenticated': {
+    onleave: 'reset-authentication',
     services: [ 'push-chat', 'push-poll' ],
     commands: [ 'nick/1', 'nick/2', 'chat/1', 'vote/2', 'disconnect' ],
     transitions: {
@@ -99,6 +102,10 @@ function nick_is_in_use(nick) {
   return nick in nicks;
 };
 
+function get_context(nick) {
+  return nicks[nick];
+};
+
 function allocate_nick(context, nick) {
   var oldnick = context.socket.nick;
 
@@ -114,14 +121,6 @@ function allocate_nick(context, nick) {
     context.socket.emit('onymous', nick);
     context.socket.broadcast.emit('info', nick + ' has joined');
     console.log(context.socket.id, 'has joined');
-  };
-};
-
-function free_nick(context) {
-  if ('nick' in context.socket) {
-    delete nicks[context.socket.nick];
-    delete context.socket.nick;
-    delete context.socket.authenticate;
   };
 };
 
@@ -151,21 +150,25 @@ commands['nick/2'] = function (nick, pass) {
   if (!authenticate(nick, pass)) return this.reject('forbidden');
 
   //
-  if ('nick' in this.socket) {
-    if (nick_is_in_use(nick) && this.socket.nick !== nick) {
-      users[nick].socket.emit('disconnect');
-    };
-  } else {
-    if (nick_is_in_use(nick)) {
-      users[nick].socket.emit('disconnect');
-    };
-
-    allocate_nick(this, nick);
+  if (('nick' in this.socket
+        && nick_is_in_use(nick)
+        && this.socket.nick !== nick)
+      || nick_is_in_use(nick)) {
+    // kick
+    var by = 'Bob Ross';
+    var reason = 'you are made of stupid!';
+    var spoofing_context = get_context(nick);
+    spoofing_context.socket.emit('kick', by, reason);
+    //free_nick(get_context(nick));
+    enter_state(spoofing_context.socket, 'anonymous');
+    // TODO change state to anonymous
   };
+
+  allocate_nick(this, nick);
 
   // TODO move this somewhere else
   this.socket.authenticated = true;
-  this.socket.emit('info', nick + ' is now authenticated');
+  //this.socket.emit('info', nick + ' is now authenticated');
   this.socket.broadcast.emit('info', nick + ' is now authenticated');
 
   return this.accept();
@@ -176,7 +179,7 @@ commands['disconnect'] = function () {
     this.socket.broadcast.emit('info',
         this.socket.nick + ' has quit: remote host closed the connection');
   };
-  free_nick(this);
+  //free_nick(this);
   return this.accept();
 };
 
@@ -190,6 +193,16 @@ commands['chat/1'] = function (text) {
 };
 
 
+actions['reset-nick'] = function () {
+  delete nicks[this.socket.nick];
+  delete this.socket.nick;
+};
+
+actions['reset-authentication'] = function () {
+  delete this.socket.authenticated;
+};
+
+
 
 io.sockets.on('connection', connect);
 
@@ -199,31 +212,58 @@ function connect (socket) {
 };
 
 function enter_state(socket, state_name) {
+
+  if (socket.leave_this_state) {
+    socket.leave_this_state();
+  };
+
   // TODO check if there is such a state
   var state = states[state_name];
 
+  var base_context = {
+    socket: socket
+  };
+
   console.log(socket.id, 'enter state:', state_name);
+  socket.emit('enter state', state_name);
+  if (state.onenter) {
+    console.log(socket.id, state_name, 'onenter');
+    var action = actions[state.onenter];
+    if (!action) {
+      throw new Error('no such action: ' + state.onenter);
+    };
+    action.call(base_context);
+  };
 
   // TODO enable services
 
   var enabled_commands = [];
 
   function enable_command(name, handler) {
-    console.log(socket.id, 'enable command:', name);
+    //console.log(socket.id, 'enable command:', name);
     enabled_commands.push(Array.prototype.slice.apply(arguments));
     socket.on(name, handler);
   };
 
   function disable_command(name, handler) {
     socket.removeListener(name, handler);
-    console.log(socket.id, 'disable command:', name);
+    //console.log(socket.id, 'disable command:', name);
   };
 
-  function leave_this_state() {
+  socket.leave_this_state = function () {
     while (enabled_commands.length > 0) {
-      disable_command.apply(this, enabled_commands.pop());
+      disable_command.apply(base_context, enabled_commands.pop());
+    };
+    if (state.onleave) {
+      console.log(socket.id, state_name, 'onleave');
+      var action = actions[state.onleave];
+      if (!action) {
+        throw new Error('no such action: ' + state.onenter);
+      };
+      action.call(base_context);
     };
     console.log(socket.id, 'leave state:', state_name);
+    socket.emit('leave state', state_name);
   };
 
   state.commands.forEach(function (command_name) {
@@ -231,23 +271,23 @@ function enter_state(socket, state_name) {
 
     function command_handler () {
       console.log(socket.id, 'call', command_name);
-      var context = {
-        accept: function () {
-          if (command_name in state.transitions) {
-            // TODO multiple states
-            var next_state_name = state.transitions[command_name];
-            leave_this_state();
-            return enter_state(socket, next_state_name);
-          };
-        },
-        reject: function (reason) {
-          console.error(socket.id, command_name, 'rejected:', reason);
-          socket.emit('reject', command_name, reason);
-        },
-        socket: socket
+      var command_context = Object.create(base_context);
+
+
+
+      command_context.accept = function () {
+        if (command_name in state.transitions) {
+          // TODO multiple states
+          var next_state_name = state.transitions[command_name];
+          return enter_state(socket, next_state_name);
+        };
+      };
+      command_context.reject = function (reason) {
+        console.error(socket.id, command_name, 'rejected:', reason);
+        socket.emit('reject', command_name, reason);
       };
 
-      return command.apply(context, arguments);
+      return command.apply(command_context, arguments);
     };
 
     enable_command(command_name, command_handler);

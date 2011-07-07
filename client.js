@@ -27,12 +27,52 @@ function log_info (message) {
 $(function () {
   var socket = io.connect();
   var mynick;
+  var insert_on_reject = false;
+  var focus_on_reject = false;
+  var select_on_reject = false;
 
-  $('#message').bind('keydown', function (event) {
-    if (event.keyCode === 13) {
-      var nick = $('#message').val();
-      socket.emit('nick/1', nick);
+  function handle_command(nick, content) {
+    var match = /^\/([^ ]+)(?: +([^ ]+)(?: +([^ ]+.*))?)?$/.exec(content);
+    if (match) switch (match[1]) {
+      case 'nick':
+        if (match[3]) {
+          insert_on_reject = '/auth ' + match[2] + ' ';
+          focus_on_reject = true;
+          select_on_reject = false;
+          socket.emit('nick/2', match[2], match[3]);
+        } else {
+          insert_on_reject = '/auth ';
+          focus_on_reject = true;
+          select_on_reject = false;
+          socket.emit('nick/1', match[2]);
+        };
+        return true;
+      case 'auth':
+        if (nick) {
+          insert_on_reject = '/auth ' + nick + ' ';
+          focus_on_reject = true;
+          select_on_reject = false;
+          socket.emit('nick/2', nick, match[2]);
+          return true;
+        };
+        // else fall through
+      default:
+        $('#message').val(content);
+        $('#message').select();
+        log_err('unknown command: ' + match[1]);
+        return true;
     };
+  };
+
+  socket.on('kick', function (by, reason) {
+    log_info('you have been kicked by ' + by + ' because ' + reason);
+    // TODO $('#message').unbind('keydown');
+    // TODO $('#message').bind('keydown', function (event) {
+    // TODO   if (event.keyCode === 13) {
+    // TODO     var nick = $('#message').val();
+    // TODO     socket.emit('nick/1', nick);
+    // TODO   };
+    // TODO });
   });
 
   socket.on('onymous', function (nick) {
@@ -42,8 +82,6 @@ $(function () {
     //$('#password').remove();
     // $('#password-label').remove();
 
-    $('#prompt').html('You are known as <span id="nickname" style="color:green">' + nick + '</span>.');
-
     $('#message').unbind();
     $('#message').bind('keydown', function (event) {
       if (event.keyCode === 13) {
@@ -51,28 +89,14 @@ $(function () {
         var content = message.val();
         message.val(''); // reset input field
 
-        // parse commands
-        var match = /^\/([^ ]+)(?: +(.*))?$/.exec(content);
-
-        if (match) switch (match[1]) {
-          case 'nick':
-            socket.emit('nick/1', match[2]);
-            break;
-          case 'auth':
-            socket.emit('nick/2', nick, match[2]);
-            break;
-          default:
-            message.val(content);
-            $('#message').select();
-            log_err('unknown command: ' + match[1]);
-            break;
-        } else {
+        if (!handle_command(nick, content)) {
+          insert_on_reject = content;
+          focus_on_reject = true;
+          select_on_reject = true;
           socket.emit('chat/1', content);
         };
       };
     });
-
-    log_info('you have joined as ' + nick);
   });
 
   socket.on('info', log_info);
@@ -89,15 +113,59 @@ $(function () {
 
   socket.on('reject', function (what, reason) {
     //console.error('rejected', what.toString() + ':', reason);
-    switch (what) {
-      case 'nick/1':
-        $('#message').select();
-        break;
-      case 'nick/2':
-        $('#message').val('/auth ');
-        $('#message').focus();
-        break;
+    if (insert_on_reject) {
+      $('#message').val(insert_on_reject);
+      insert_on_reject = null;
+    };
+    if (focus_on_reject) {
+      $('#message').focus();
+      focus_on_reject = null;
+    };
+    if (select_on_reject) {
+      $('#message').select();
+      select_on_reject = null;
     };
     log_err(reason);
+  });
+
+  socket.on('enter state', function (state_name) {
+    switch (state_name) {
+      case 'onymous':
+        // TODO this is handled mainly by the 'onymous' event
+        $('#prompt').html('You are known as <span id="nickname" style="color:green">' + mynick + '</span>.');
+        break;
+      case 'anonymous':
+        $('#prompt').html('Enter a name to chat.');
+        $('#message').unbind();
+        $('#message').bind('keydown', function (event) {
+          if (event.keyCode === 13) {
+            var message = $('#message');
+            var content = message.val();
+            message.val(''); // reset input field
+            if (!handle_command(null, content)) {
+              insert_on_reject = content;
+              focus_on_reject = true;
+              select_on_reject = true;
+              socket.emit('nick/1', content);
+            };
+          };
+        });
+        break;
+      case 'authenticated':
+        $('#prompt').html('You are authenticated as <span id="nickname" style="color:green">' + mynick + '</span>.');
+        break;
+      default:
+        log_info('enter state: ' + state_name);
+    };
+  });
+
+  socket.on('leave state', function (state_name) {
+    switch (state_name) {
+      case 'anonymous':
+        log_info('you have joined as ' + mynick);
+        break;
+      default:
+        log_info('leave state: ' + state_name);
+    };
   });
 });
