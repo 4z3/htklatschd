@@ -39,13 +39,46 @@ server.listen(port, function () {
 });
 
 function make_file_server(path, type) {
-  var content = fs.readFileSync([__dirname, path].join('/'));
-  return function (req, res) {
+  var content;
+  var mtime = new Date(0);
+  function serve_content (res) {
     res.writeHeader(200, {
       'Content-Type': type,
       'Content-Length': content.length
     });
     res.end(content);
+  };
+  function internal_server_error (res, err) {
+    console.error(
+        'file_server(' + JSON.stringify(path) + '):', err.stack);
+    var type = 'text/plain';
+    var content = 'Internal Server Error while serving: ' + path;
+    res.writeHeader(500, {
+      'Content-Type': type,
+      'Content-Length': content.length
+    });
+    res.end(content);
+  };
+  return function (req, res) {
+    var filename = [__dirname, path].join('/');
+    fs.stat(filename, function (err, stats) {
+      if (err) {
+        internal_server_error(res, err);
+      } else if (stats.mtime > mtime) {
+        console.log('reload file:', filename);
+        fs.readFile(filename, function (err, data) {
+          if (err) {
+            internal_server_error(res, err);
+          } else {
+            content = data;
+            mtime = stats.mtime;
+            serve_content(res);
+          };
+        });
+      } else {
+        serve_content(res);
+      };
+    });
   };
 };
 
