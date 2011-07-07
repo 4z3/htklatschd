@@ -168,4 +168,43 @@ $(function () {
         log_info('leave state: ' + state_name);
     };
   });
+
+  socket.on('update poll', function (poll_update) {
+    var polls = $('#polls');
+    var poll = polls.find('#poll_' + poll_update.id);
+    if (poll.length === 0) {
+      polls.append(
+        '<div id="poll_' + poll_update.id + '">'
+        + '<span class="topic"></span>'
+        + '<span class="results"></span>'
+        + '</div>');
+      poll = polls.find('#poll_' + poll_update.id);
+      var innerHTML = [];
+      Object.keys(poll_update.results).forEach(function (alt) {
+        var className = 'vote_' + alt;
+
+        poll.find('.results').append(
+          '<button class="' + className + '">???</button>'
+        );
+
+        $('#poll_'+ poll_update.id).find('.' + className).bind('click',
+          function (event) {
+            try {
+              socket.emit('vote/2', poll_update.id, alt);
+            } catch (e) {
+              console.error(e);
+            };
+          }
+        );
+      });
+      //poll.find('.results').append(innerHTML.join(', '));
+    };
+    poll.find('.topic').html(poll_update.topic);
+    Object.keys(poll_update.results).forEach(function (alt) {
+      poll.find('button.vote_'+alt).html(
+        alt + ': ' + poll_update.results[alt]
+      );
+    });
+  });
 });
+

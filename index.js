@@ -167,7 +167,7 @@ commands['nick/2'] = function (nick, pass) {
   allocate_nick(this, nick);
 
   // TODO move this somewhere else
-  this.socket.authenticated = true;
+  this.socket.account = accounts[nick];
   //this.socket.emit('info', nick + ' is now authenticated');
   this.socket.broadcast.emit('info', nick + ' is now authenticated');
 
@@ -184,13 +184,40 @@ commands['disconnect'] = function () {
 };
 
 commands['chat/1'] = function (text) {
-  if (!this.socket.authenticated) {
+  if (!this.socket.account) {
     text = '<span style="color:gray">' + text + '</span>';
   };
 
   call_service('push-chat/2', this.socket.nick, text);
 
   return this.accept();
+};
+
+commands['vote/2'] = function (poll_id, decision) {
+  if (!(poll_id in polls)) {
+    console.log(this.socket.id, 'voted ', decision, 'for non-existent poll_id:', poll_id);
+    this.socket.emit('stupid', 'vote: inexistent poll_id ' + JSON.stringify(poll_id));
+  } else {
+    var poll = polls[poll_id];
+    var account = this.socket.account;
+    if (!('votes' in account)) {
+      account.votes = {};
+    };
+    var votes = account.votes;
+    if (decision in poll.results) {
+      if (poll_id in votes) {
+        console.log(this.socket.id, 'remove old vote on poll ' + poll_id);
+        var vote = votes[poll_id];
+        poll.results[vote]--;
+      };
+      console.log(this.socket.id, 'vote ' + decision + ' on poll ' + poll_id);
+      var vote = votes[poll_id] = decision;
+      poll.results[vote]++;
+      call_service('push-poll/1', poll);
+    } else {
+      this.socket.emit('stupid', 'invalid vote: ' + decision);
+    };
+  };
 };
 
 
@@ -200,15 +227,15 @@ actions['reset-nick'] = function () {
 };
 
 actions['reset-authentication'] = function () {
-  delete this.socket.authenticated;
+  delete this.socket.account;
 };
 
 services['push-chat/2'] = function (nick, text) {
   this.socket.emit('say', nick, text);
 };
 
-services['push-poll/1'] = function () {
-  console.log('[31;1m  TODO [m' + 'push-poll/1');
+services['push-poll/1'] = function (poll) {
+  this.socket.emit('update poll', poll);
 };
 
 
@@ -244,9 +271,11 @@ function unsubscribe_from(service_name, context) {
   delete context.subscribed_services[service_name];
 };
 function unsubscribe_from_all(context) {
-  Object.keys(context.subscribed_services).forEach(function (service_name) {
-    unsubscribe_from(service_name, context);
-  });
+  if (context.subscribed_services) {
+    Object.keys(context.subscribed_services).forEach(function (service_name) {
+      unsubscribe_from(service_name, context);
+    });
+  };
 };
 
 function call_service(service_name) {
@@ -261,8 +290,20 @@ function call_service(service_name) {
 
 
 io.sockets.on('connection', function (socket) {
+  // TODO initialize base_context here...
+
   enter_state(socket, initial_state);
+
+  // TODO this has do be done nicer...
+  var temp_context = {
+    socket: socket
+  };
+  Object.keys(polls).forEach(function (id) {
+    var poll = polls[id];
+    services['push-poll/1'].call(temp_context, poll);
+  });
 });
+
 
 function enter_state(socket, state_name) {
 
