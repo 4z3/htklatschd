@@ -5,13 +5,9 @@ var http = require('http'),
     io = require('socket.io'),
     router = require('choreographer').router(),
     uuid = require('node-uuid'),
-    readFileSync = require('fs').readFileSync;
+    fs = require('fs');
 
 var server = http.createServer(router);
-
-// setup socket.io
-io = io.listen(server);
-io.set('log level', 1);
 
 // Inform client about events without corresponding command to handle it.
 (function () {
@@ -28,10 +24,14 @@ io.set('log level', 1);
   };
 })();
 
+// setup socket.io
+io = io.listen(server);
+io.set('log level', 1);
+
 // logged-in users
 var users = {};
-var polls = JSON.parse(readFileSync(__dirname + '/polls.json'));
-var accounts = JSON.parse(readFileSync(__dirname + '/accounts.json'));
+var polls = JSON.parse(fs.readFileSync(__dirname + '/polls.json'));
+var accounts = JSON.parse(fs.readFileSync(__dirname + '/accounts.json'));
 
 
 server.listen(port, function () {
@@ -39,7 +39,7 @@ server.listen(port, function () {
 });
 
 function make_file_server(path, type) {
-  var content = require('fs').readFileSync([__dirname, path].join('/'));
+  var content = fs.readFileSync([__dirname, path].join('/'));
   return function (req, res) {
     res.writeHeader(200, {
       'Content-Type': type,
