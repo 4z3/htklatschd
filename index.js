@@ -13,6 +13,21 @@ var server = http.createServer(router);
 io = io.listen(server);
 io.set('log level', 1);
 
+// Inform client about events without corresponding command to handle it.
+(function () {
+  var onClientMessage = io.Manager.prototype.onClientMessage;
+  io.Manager.prototype.onClientMessage = function (id, packet) {
+    // TODO bail out if users[id] does not exist
+    var user = users[id];
+    if (packet.type === 'event' && !(packet.name in user.capabilities)) {
+      console.log(id, '[35;1munhandled', packet, '[m');
+      user.socket.emit('unhandled', packet);
+    } else {
+      return onClientMessage.apply(this, arguments);
+    };
+  };
+})();
+
 // logged-in users
 var users = {};
 var polls = JSON.parse(readFileSync(__dirname + '/polls.json'));
@@ -288,8 +303,18 @@ function call_service(service_name) {
   });
 };
 
-
 io.sockets.on('connection', function (socket) {
+
+  // TODO bail out, if it already exists
+  users[socket.id] = {
+    socket: socket,
+    capabilities: []
+  };
+
+  socket.on('disconnect', function () {
+    delete users[socket.id];
+  });
+
   // TODO initialize base_context here...
 
   enter_state(socket, initial_state);
@@ -318,6 +343,8 @@ function enter_state(socket, state_name) {
     socket: socket
   };
 
+  var user = users[socket.id];
+
   console.log(socket.id, 'enter state:', state_name);
   socket.emit('enter state', state_name);
   if (state.onenter) {
@@ -334,6 +361,7 @@ function enter_state(socket, state_name) {
     console.log(socket.id, 'enable command:', name);
     enabled_commands.push(Array.prototype.slice.apply(arguments));
     socket.on(name, handler);
+    user.capabilities[name] = true;
   };
   function disable_all_commands() {
     while (enabled_commands.length > 0) {
@@ -342,6 +370,7 @@ function enter_state(socket, state_name) {
       var command_handler = enabled_command[1];
       socket.removeListener(command_name, command_handler);
       console.log(socket.id, 'disable command:', command_name);
+      delete user.capabilities[command_name];
     };
   };
 

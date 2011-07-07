@@ -128,6 +128,17 @@ $(function () {
     log_err(reason);
   });
 
+  socket.on('unhandled', function (packet) {
+    var what = packet.name.replace(/\/[^\/]*$/,'');
+    switch (what) {
+      case 'vote':
+        log_info('authenticate yourself with "/nick NICKNAME PASSWORD" to vote');
+        break;
+      default:
+        log_err('unhandled event ' + JSON.stringify(what));
+    };
+  });
+
   socket.on('enter state', function (state_name) {
     switch (state_name) {
       case 'onymous':
