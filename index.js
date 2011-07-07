@@ -261,6 +261,23 @@ commands['vote/2'] = function (poll_id, decision) {
       console.log(this.socket.id, 'vote ' + decision + ' on poll ' + poll_id);
       var vote = votes[poll_id] = decision;
       poll.results[vote]++;
+
+      // persist polls and accounts
+      [
+      , { filename: __dirname + '/polls.json', data: polls },
+      , { filename: __dirname + '/accounts.json', data: accounts }
+      ].forEach(function (x) {
+        var filename = x.filename;
+        var content = JSON.stringify(x.data, null, 2);
+        fs.writeFile(filename, content, function (err) {
+          if (err) {
+            console.error(err.stack); // what now?
+          } else {
+            console.log('wrote', filename);
+          };
+        });
+      });
+
       call_service('push-poll/1', poll);
     } else {
       this.socket.emit('stupid', 'invalid vote: ' + decision);
