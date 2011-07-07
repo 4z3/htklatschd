@@ -67,7 +67,7 @@ var states = {
   },
   'anonymous': {
     onenter: 'reset-nick',
-    services: [ 'push-chat', 'push-poll' ],
+    services: [ 'push-chat/2', 'push-poll/1' ],
     commands: [ 'nick/1', 'nick/2', 'disconnect' ],
     transitions: {
       'nick/1': 'onymous',
@@ -76,7 +76,7 @@ var states = {
     }
   },
   'onymous': {
-    services: [ 'push-chat', 'push-poll' ],
+    services: [ 'push-chat/2', 'push-poll/1' ],
     commands: [ 'nick/1', 'nick/2', 'chat/1', 'disconnect' ],
     transitions: {
       'nick/2': 'authenticated',
@@ -85,7 +85,7 @@ var states = {
   },
   'authenticated': {
     onleave: 'reset-authentication',
-    services: [ 'push-chat', 'push-poll' ],
+    services: [ 'push-chat/2', 'push-poll/1' ],
     commands: [ 'nick/1', 'nick/2', 'chat/1', 'vote/2', 'disconnect' ],
     transitions: {
       'nick/1': 'onymous',
@@ -187,8 +187,9 @@ commands['chat/1'] = function (text) {
   if (!this.socket.authenticated) {
     text = '<span style="color:gray">' + text + '</span>';
   };
-  this.socket.emit('say', this.socket.nick, text);
-  this.socket.broadcast.emit('say', this.socket.nick, text);
+
+  call_service('push-chat/2', this.socket.nick, text);
+
   return this.accept();
 };
 
@@ -202,6 +203,61 @@ actions['reset-authentication'] = function () {
   delete this.socket.authenticated;
 };
 
+services['push-chat/2'] = function (nick, text) {
+  this.socket.emit('say', nick, text);
+};
+
+services['push-poll/1'] = function () {
+  console.log('[31;1m  TODO [m' + 'push-poll/1');
+};
+
+
+function subscribe_to(service_name, context) {
+  var service = services[service_name];
+  // TODO die if service does not exist
+  if (!service.subscribers) {
+    service.subscribers = {};
+  };
+  // TODO die if already subscribed
+  console.log(context.socket.id, 'subscribe to', service_name);
+  service.subscribers[context.socket.id] = context;
+
+  if (!context.subscribed_services) {
+    context.subscribed_services = {};
+  };
+  context.subscribed_services[service_name] = service;
+};
+
+function unsubscribe_from(service_name, context) {
+  var service = services[service_name];
+  // TODO die if service does not exist
+  if (!service.subscribers) {
+    service.subscribers = {};
+  };
+  // TODO die if not subscribed
+  console.log(context.socket.id, 'unsubscribe from', service_name);
+  delete service.subscribers[context.socket.id];
+
+  if (!context.subscribed_services) {
+    context.subscribed_services = {};
+  };
+  delete context.subscribed_services[service_name];
+};
+function unsubscribe_from_all(context) {
+  Object.keys(context.subscribed_services).forEach(function (service_name) {
+    unsubscribe_from(service_name, context);
+  });
+};
+
+function call_service(service_name) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  var service = services[service_name];
+  // TODO die if service does not exist
+  Object.keys(service.subscribers).forEach(function (id) {
+    var context = service.subscribers[id];
+    return service.apply(context, args);
+  });
+};
 
 
 io.sockets.on('connection', function (socket) {
@@ -232,25 +288,25 @@ function enter_state(socket, state_name) {
     action.call(base_context);
   };
 
-  // TODO enable services
-
   var enabled_commands = [];
-
   function enable_command(name, handler) {
-    //console.log(socket.id, 'enable command:', name);
+    console.log(socket.id, 'enable command:', name);
     enabled_commands.push(Array.prototype.slice.apply(arguments));
     socket.on(name, handler);
   };
-
-  function disable_command(name, handler) {
-    socket.removeListener(name, handler);
-    //console.log(socket.id, 'disable command:', name);
+  function disable_all_commands() {
+    while (enabled_commands.length > 0) {
+      var enabled_command = enabled_commands.pop();
+      var command_name = enabled_command[0];
+      var command_handler = enabled_command[1];
+      socket.removeListener(command_name, command_handler);
+      console.log(socket.id, 'disable command:', command_name);
+    };
   };
 
   socket.leave_this_state = function () {
-    while (enabled_commands.length > 0) {
-      disable_command.apply(base_context, enabled_commands.pop());
-    };
+    disable_all_commands();
+    unsubscribe_from_all(base_context);
     if (state.onleave) {
       console.log(socket.id, state_name, 'onleave');
       var action = actions[state.onleave];
@@ -262,6 +318,10 @@ function enter_state(socket, state_name) {
     console.log(socket.id, 'leave state:', state_name);
     socket.emit('leave state', state_name);
   };
+
+  state.services.forEach(function (service_name) {
+    subscribe_to(service_name, base_context);
+  });
 
   state.commands.forEach(function (command_name) {
     var command = commands[command_name];
