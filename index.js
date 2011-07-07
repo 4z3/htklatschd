@@ -204,12 +204,9 @@ actions['reset-authentication'] = function () {
 
 
 
-io.sockets.on('connection', connect);
-
-
-function connect (socket) {
+io.sockets.on('connection', function (socket) {
   enter_state(socket, initial_state);
-};
+});
 
 function enter_state(socket, state_name) {
 
