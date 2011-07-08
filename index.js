@@ -111,11 +111,6 @@ var actions = {};
 var initial_state = 'anonymous';
 
 var states = {
-  'null': {
-    services: [],
-    commands: [],
-    transitions: {}
-  },
   'anonymous': {
     onenter: 'reset-nick',
     services: [
@@ -126,12 +121,10 @@ var states = {
       'nick/1',
       'nick/2',
       'names/0',
-      'disconnect'
     ],
     transitions: {
       'nick/1': 'onymous',
       'nick/2': 'authenticated',
-      'disconnect': 'null'
     }
   },
   'onymous': {
@@ -143,11 +136,9 @@ var states = {
       'nick/1',
       'nick/2',
       'chat/1',
-      'disconnect'
     ],
     transitions: {
       'nick/2': 'authenticated',
-      'disconnect': 'null'
     }
   },
   'authenticated': {
@@ -161,12 +152,10 @@ var states = {
       'nick/2',
       'chat/1',
       'vote/2',
-      'disconnect'
     ],
     transitions: {
       'nick/1': 'onymous',
       'nick/2': 'authenticated',
-      'disconnect': 'null'
     }
   }
 };
@@ -235,9 +224,10 @@ commands['nick/2'] = function (nick, pass) {
     var reason = 'you are made of stupid!';
     var spoofing_context = get_context(nick);
     spoofing_context.socket.emit('kick', by, reason);
-    //free_nick(get_context(nick));
-    enter_state(spoofing_context.socket, 'anonymous');
-    // TODO change state to anonymous
+    if (spoofing_context.socket.leave_this_state) {
+      spoofing_context.socket.leave_this_state();
+      enter_state(spoofing_context.socket, 'anonymous');
+    };
   };
 
   allocate_nick(this, nick);
@@ -247,15 +237,6 @@ commands['nick/2'] = function (nick, pass) {
   //this.socket.emit('info', nick + ' is now authenticated');
   this.socket.broadcast.emit('info', nick + ' is now authenticated');
 
-  return this.accept();
-};
-
-commands['disconnect'] = function () {
-  if ('nick' in this.socket) {
-    this.socket.broadcast.emit('info',
-        this.socket.nick + ' has quit: remote host closed the connection');
-  };
-  //free_nick(this);
   return this.accept();
 };
 
@@ -384,12 +365,21 @@ function call_service(service_name) {
 io.sockets.on('connection', function (socket) {
 
   // TODO bail out, if it already exists
-  users[socket.id] = {
+  var user = users[socket.id] = {
     socket: socket,
     capabilities: []
   };
 
   socket.on('disconnect', function () {
+    if ('nick' in socket) {
+      socket.broadcast.emit('info',
+          socket.nick + ' has quit: remote host closed the connection');
+    };
+
+    if (user.socket.leave_this_state) {
+      user.socket.leave_this_state();
+    };
+
     delete users[socket.id];
   });
 
@@ -453,6 +443,7 @@ function enter_state(socket, state_name) {
   };
 
   socket.leave_this_state = function () {
+    delete socket.leave_this_state;
     disable_all_commands();
     unsubscribe_from_all(base_context);
     if (state.onleave) {
