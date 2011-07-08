@@ -118,8 +118,16 @@ var states = {
   },
   'anonymous': {
     onenter: 'reset-nick',
-    services: [ 'push-chat/2', 'push-poll/1' ],
-    commands: [ 'nick/1', 'nick/2', 'disconnect' ],
+    services: [
+      'push-chat/2',
+      'push-poll/1'
+    ],
+    commands: [
+      'nick/1',
+      'nick/2',
+      'names/0',
+      'disconnect'
+    ],
     transitions: {
       'nick/1': 'onymous',
       'nick/2': 'authenticated',
@@ -127,8 +135,16 @@ var states = {
     }
   },
   'onymous': {
-    services: [ 'push-chat/2', 'push-poll/1' ],
-    commands: [ 'nick/1', 'nick/2', 'chat/1', 'disconnect' ],
+    services: [
+      'push-chat/2',
+      'push-poll/1'
+    ],
+    commands: [
+      'nick/1',
+      'nick/2',
+      'chat/1',
+      'disconnect'
+    ],
     transitions: {
       'nick/2': 'authenticated',
       'disconnect': 'null'
@@ -136,8 +152,17 @@ var states = {
   },
   'authenticated': {
     onleave: 'reset-authentication',
-    services: [ 'push-chat/2', 'push-poll/1' ],
-    commands: [ 'nick/1', 'nick/2', 'chat/1', 'vote/2', 'disconnect' ],
+    services: [
+      'push-chat/2',
+      'push-poll/1'
+    ],
+    commands: [
+      'nick/1',
+      'nick/2',
+      'chat/1',
+      'vote/2',
+      'disconnect'
+    ],
     transitions: {
       'nick/1': 'onymous',
       'nick/2': 'authenticated',
